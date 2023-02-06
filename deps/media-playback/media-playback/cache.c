@@ -111,7 +111,7 @@ bool mp_cache_decode(mp_cache_t *c)
 			mp_media_next_audio(m);
 
 		if (!mp_media_prepare_frames(m))
-			break;
+			goto fail;
 	}
 
 	success = true;
