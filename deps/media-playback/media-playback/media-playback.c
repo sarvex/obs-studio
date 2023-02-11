@@ -69,6 +69,17 @@ void media_playback_stop(media_playback_t *mp)
 		mp_media_stop(&mp->media);
 }
 
+void media_playback_preload_frame(media_playback_t *mp)
+{
+	if (!mp)
+		return;
+
+	if (mp->is_cached)
+		mp_cache_preload_frame(&mp->cache);
+	else
+		mp_media_preload_frame(&mp->media);
+}
+
 int64_t media_playback_get_current_time(media_playback_t *mp)
 {
 	if (!mp)

@@ -76,6 +76,8 @@ static void stinger_update(void *data, obs_data_t *settings)
 	obs_data_set_bool(media_settings, "hw_decode", hw_decode);
 	obs_data_set_bool(media_settings, "looping", false);
 	obs_data_set_bool(media_settings, "full_decode", preload);
+	obs_data_set_bool(media_settings, "clear_on_media_end", false);
+	obs_data_set_bool(media_settings, "is_stinger", true);
 
 	obs_source_release(s->media_source);
 	struct dstr name;
@@ -631,6 +633,11 @@ static void stinger_transition_stop(void *data)
 
 	if (s->matte_source)
 		obs_source_remove_active_child(s->source, s->matte_source);
+
+	proc_handler_t *ph = obs_source_get_proc_handler(s->media_source);
+
+	calldata_t cd = {0};
+	proc_handler_call(ph, "preload_first_frame", &cd);
 
 	s->transitioning = false;
 }

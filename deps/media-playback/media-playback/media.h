@@ -62,6 +62,7 @@ struct mp_media {
 	DARRAY(AVPacket *) packet_pool;
 	struct mp_decode v;
 	struct mp_decode a;
+	bool request_preload;
 	bool is_local_file;
 	bool reconnecting;
 	bool has_video;
@@ -87,6 +88,7 @@ struct mp_media {
 
 	pthread_mutex_t mutex;
 	os_sem_t *sem;
+	bool preload_frame;
 	bool stopping;
 	bool looping;
 	bool active;
@@ -111,6 +113,7 @@ extern void mp_media_free(mp_media_t *media);
 extern void mp_media_play(mp_media_t *media, bool loop, bool reconnecting);
 extern void mp_media_stop(mp_media_t *media);
 extern void mp_media_play_pause(mp_media_t *media, bool pause);
+extern void mp_media_preload_frame(mp_media_t *media);
 extern int64_t mp_media_get_current_time(mp_media_t *m);
 extern int64_t mp_media_get_frames(mp_media_t *m);
 extern int64_t mp_media_get_duration(mp_media_t *m);

@@ -504,7 +504,7 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 	if (preload) {
 		if (m->seek_next_ts && m->v_seek_cb) {
 			m->v_seek_cb(m->opaque, frame);
-		} else {
+		} else if (!m->request_preload) {
 			m->v_preload_cb(m->opaque, frame);
 		}
 	} else {
@@ -784,7 +784,8 @@ static inline bool mp_media_thread(mp_media_t *m)
 	}
 
 	for (;;) {
-		bool reset, kill, is_active, seek, pause, reset_time;
+		bool reset, kill, is_active, seek, pause, reset_time,
+			preload_frame;
 		int64_t seek_pos;
 		bool timeout = false;
 
@@ -809,10 +810,12 @@ static inline bool mp_media_thread(mp_media_t *m)
 		m->reset = false;
 		m->kill = false;
 
+		preload_frame = m->preload_frame;
 		pause = m->pause;
 		seek_pos = m->seek_pos;
 		seek = m->seek;
 		reset_time = m->reset_ts;
+		m->preload_frame = false;
 		m->seek = false;
 		m->reset_ts = false;
 
@@ -839,6 +842,9 @@ static inline bool mp_media_thread(mp_media_t *m)
 
 		if (pause)
 			continue;
+
+		if (preload_frame)
+			m->v_preload_cb(m->opaque, &m->obsframe);
 
 		/* frames are ready */
 		if (is_active && !timeout) {
@@ -915,6 +921,7 @@ bool mp_media_init(mp_media_t *media, const struct mp_media_info *info)
 	media->is_linear_alpha = info->is_linear_alpha;
 	media->buffering = info->buffering;
 	media->speed = info->speed;
+	media->request_preload = info->request_preload;
 	media->is_local_file = info->is_local_file;
 	da_init(media->packet_pool);
 
@@ -1004,6 +1011,16 @@ void mp_media_play_pause(mp_media_t *m, bool pause)
 	pthread_mutex_unlock(&m->mutex);
 
 	os_sem_post(m->sem);
+}
+
+void mp_media_preload_frame(mp_media_t *m)
+{
+	if (m->request_preload && m->thread_valid && m->v_preload_cb) {
+		pthread_mutex_lock(&m->mutex);
+		m->preload_frame = true;
+		pthread_mutex_unlock(&m->mutex);
+		os_sem_post(m->sem);
+	}
 }
 
 void mp_media_stop(mp_media_t *m)

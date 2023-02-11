@@ -28,6 +28,7 @@ struct mp_media_info {
 	bool hardware_decoding;
 	bool is_local_file;
 	bool reconnecting;
+	bool request_preload;
 	bool full_decode;
 };
 
@@ -39,6 +40,7 @@ extern void media_playback_play(media_playback_t *mp, bool looping,
 				bool reconnecting);
 extern void media_playback_play_pause(media_playback_t *mp, bool pause);
 extern void media_playback_stop(media_playback_t *mp);
+extern void media_playback_preload_frame(media_playback_t *mp);
 extern int64_t media_playback_get_current_time(media_playback_t *mp);
 extern void media_playback_seek(media_playback_t *mp, int64_t pos);
 extern int64_t media_playback_get_frames(media_playback_t *mp);

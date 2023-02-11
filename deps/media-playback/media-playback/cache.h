@@ -13,6 +13,7 @@ struct mp_cache {
 	mp_video_cb v_cb;
 	mp_audio_cb a_cb;
 	void *opaque;
+	bool request_preload;
 	bool has_video;
 	bool has_audio;
 
@@ -24,6 +25,7 @@ struct mp_cache {
 
 	pthread_mutex_t mutex;
 	os_sem_t *sem;
+	bool preload_frame;
 	bool stopping;
 	bool looping;
 	bool active;
@@ -38,6 +40,8 @@ struct mp_cache {
 
 	size_t cur_v_idx;
 	size_t cur_a_idx;
+	size_t next_v_idx;
+	size_t next_a_idx;
 	int64_t next_v_ts;
 	int64_t next_a_ts;
 
@@ -70,6 +74,7 @@ extern void mp_cache_free(mp_cache_t *c);
 extern void mp_cache_play(mp_cache_t *c, bool loop);
 extern void mp_cache_play_pause(mp_cache_t *c, bool pause);
 extern void mp_cache_stop(mp_cache_t *c);
+extern void mp_cache_preload_frame(mp_cache_t *c);
 extern int64_t mp_cache_get_current_time(mp_cache_t *c);
 extern void mp_cache_seek(mp_cache_t *c, int64_t pos);
 extern int64_t mp_cache_get_frames(mp_cache_t *c);

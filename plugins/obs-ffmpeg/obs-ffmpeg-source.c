@@ -52,6 +52,7 @@ struct ffmpeg_source {
 	bool restart_on_activate;
 	bool close_when_inactive;
 	bool seekable;
+	bool is_stinger;
 
 	pthread_t reconnect_thread;
 	bool stop_reconnect;
@@ -315,6 +316,7 @@ static void ffmpeg_source_open(struct ffmpeg_source *s)
 			.ffmpeg_options = s->ffmpeg_options,
 			.is_local_file = s->is_local_file || s->seekable,
 			.reconnecting = s->reconnecting,
+			.request_preload = s->is_stinger,
 			.full_decode = s->full_decode,
 		};
 
@@ -403,6 +405,7 @@ static void ffmpeg_source_update(void *data, obs_data_t *settings)
 	struct ffmpeg_source *s = data;
 
 	bool is_local_file = obs_data_get_bool(settings, "is_local_file");
+	bool is_stinger = obs_data_get_bool(settings, "is_stinger");
 
 	const char *input;
 	const char *input_format;
@@ -460,6 +463,7 @@ static void ffmpeg_source_update(void *data, obs_data_t *settings)
 	s->is_local_file = is_local_file;
 	s->seekable = obs_data_get_bool(settings, "seekable");
 	s->ffmpeg_options = ffmpeg_options ? bstrdup(ffmpeg_options) : NULL;
+	s->is_stinger = is_stinger;
 
 	if (s->speed_percent < 1 || s->speed_percent > 200)
 		s->speed_percent = 100;
@@ -501,6 +505,13 @@ static void restart_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 static void restart_proc(void *data, calldata_t *cd)
 {
 	restart_hotkey(data, 0, NULL, true);
+	UNUSED_PARAMETER(cd);
+}
+
+static void preload_first_frame_proc(void *data, calldata_t *cd)
+{
+	struct ffmpeg_source *s = data;
+	media_playback_preload_frame(s->media);
 	UNUSED_PARAMETER(cd);
 }
 
@@ -595,6 +606,8 @@ static void *ffmpeg_source_create(obs_data_t *settings, obs_source_t *source)
 
 	proc_handler_t *ph = obs_source_get_proc_handler(source);
 	proc_handler_add(ph, "void restart()", restart_proc, s);
+	proc_handler_add(ph, "void preload_first_frame()",
+			 preload_first_frame_proc, s);
 	proc_handler_add(ph, "void get_duration(out int duration)",
 			 get_duration, s);
 	proc_handler_add(ph, "void get_nb_frames(out int num_frames)",

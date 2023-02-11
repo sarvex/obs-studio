@@ -177,8 +177,8 @@ static void seek_to(mp_cache_t *c, int64_t pos)
 		}
 	}
 
-	c->cur_v_idx = new_v_idx;
-	c->cur_a_idx = new_a_idx;
+	c->cur_v_idx = c->next_v_idx = new_v_idx;
+	c->cur_a_idx = c->next_a_idx = new_a_idx;
 }
 
 /* maximum timestamp variance in nanoseconds */
@@ -199,9 +199,9 @@ static inline bool mp_media_can_play_audio(mp_cache_t *c)
 static inline void calc_next_v_ts(mp_cache_t *c, struct obs_source_frame *frame)
 {
 	int64_t offset;
-	if (!v_eof(c)) {
+	if (c->next_v_idx < c->video_frames.num) {
 		struct obs_source_frame *next =
-			&c->video_frames.array[c->cur_v_idx];
+			&c->video_frames.array[c->next_v_idx];
 		offset = (int64_t)(next->timestamp - frame->timestamp);
 	} else {
 		offset = c->final_v_duration;
@@ -213,9 +213,9 @@ static inline void calc_next_v_ts(mp_cache_t *c, struct obs_source_frame *frame)
 static inline void calc_next_a_ts(mp_cache_t *c, struct obs_source_audio *audio)
 {
 	int64_t offset;
-	if (!a_eof(c)) {
+	if (c->next_a_idx < c->audio_segments.num) {
 		struct obs_source_audio *next =
-			&c->audio_segments.array[c->cur_a_idx];
+			&c->audio_segments.array[c->next_a_idx];
 		offset = (int64_t)(next->timestamp - audio->timestamp);
 	} else {
 		offset = c->final_a_duration;
@@ -226,7 +226,14 @@ static inline void calc_next_a_ts(mp_cache_t *c, struct obs_source_audio *audio)
 
 static void mp_cache_next_video(mp_cache_t *c, bool preload)
 {
-	struct obs_source_frame *frame = &c->video_frames.array[c->cur_v_idx];
+	/* eof check */
+	if (c->next_v_idx == c->video_frames.num) {
+		if (mp_media_can_play_video(c))
+			c->cur_v_idx = c->next_v_idx;
+		return;
+	}
+
+	struct obs_source_frame *frame = &c->video_frames.array[c->next_v_idx];
 	struct obs_source_frame dup = *frame;
 
 	dup.timestamp = c->base_ts + dup.timestamp - c->start_ts +
@@ -239,12 +246,14 @@ static void mp_cache_next_video(mp_cache_t *c, bool preload)
 		if (c->v_cb)
 			c->v_cb(c->opaque, &dup);
 
-		++c->cur_v_idx;
+		if (c->cur_v_idx < c->next_v_idx)
+			++c->cur_v_idx;
+		++c->next_v_idx;
 		calc_next_v_ts(c, frame);
 	} else {
 		if (c->seek_next_ts && c->v_seek_cb) {
 			c->v_seek_cb(c->opaque, &dup);
-		} else {
+		} else if (!c->request_preload) {
 			c->v_preload_cb(c->opaque, &dup);
 		}
 	}
@@ -252,10 +261,18 @@ static void mp_cache_next_video(mp_cache_t *c, bool preload)
 
 static void mp_cache_next_audio(mp_cache_t *c)
 {
+	/* eof check */
+	if (c->next_a_idx == c->video_frames.num) {
+		if (mp_media_can_play_audio(c))
+			c->cur_a_idx = c->next_a_idx;
+		return;
+	}
+
 	if (!mp_media_can_play_audio(c))
 		return;
 
-	struct obs_source_audio *audio = &c->audio_segments.array[c->cur_a_idx];
+	struct obs_source_audio *audio =
+		&c->audio_segments.array[c->next_a_idx];
 	struct obs_source_audio dup = *audio;
 
 	dup.timestamp = c->base_ts + dup.timestamp - c->start_ts +
@@ -263,7 +280,9 @@ static void mp_cache_next_audio(mp_cache_t *c)
 	if (c->a_cb)
 		c->a_cb(c->opaque, &dup);
 
-	++c->cur_a_idx;
+	if (c->cur_a_idx < c->next_a_idx)
+		++c->cur_a_idx;
+	++c->next_a_idx;
 	calc_next_a_ts(c, audio);
 }
 
@@ -290,12 +309,12 @@ static bool mp_cache_reset(mp_cache_t *c)
 
 	if (c->has_video) {
 		size_t next_idx = c->video_frames.num > 1 ? 1 : 0;
-		c->cur_v_idx = 0;
+		c->cur_v_idx = c->next_v_idx = 0;
 		c->next_v_ts = c->video_frames.array[next_idx].timestamp;
 	}
 	if (c->has_audio) {
 		size_t next_idx = c->audio_segments.num > 1 ? 1 : 0;
-		c->cur_a_idx = 0;
+		c->cur_a_idx = c->next_a_idx = 0;
 		c->next_a_ts = c->audio_segments.array[next_idx].timestamp;
 	}
 
@@ -351,7 +370,8 @@ static inline bool mp_cache_thread(mp_cache_t *c)
 	}
 
 	for (;;) {
-		bool reset, kill, is_active, seek, pause, reset_time;
+		bool reset, kill, is_active, seek, pause, reset_time,
+			preload_frame;
 		int64_t seek_pos;
 		bool timeout = false;
 
@@ -376,10 +396,12 @@ static inline bool mp_cache_thread(mp_cache_t *c)
 		c->reset = false;
 		c->kill = false;
 
+		preload_frame = c->preload_frame;
 		pause = c->pause;
 		seek_pos = c->seek_pos;
 		seek = c->seek;
 		reset_time = c->reset_ts;
+		c->preload_frame = false;
 		c->seek = false;
 		c->reset_ts = false;
 
@@ -406,6 +428,9 @@ static inline bool mp_cache_thread(mp_cache_t *c)
 
 		if (pause)
 			continue;
+
+		if (preload_frame)
+			c->v_preload_cb(c->opaque, &c->video_frames.array[0]);
 
 		/* frames are ready */
 		if (is_active && !timeout) {
@@ -536,6 +561,7 @@ bool mp_cache_init(mp_cache_t *c, const struct mp_media_info *info)
 	c->ffmpeg_options = info->ffmpeg_options;
 	c->v_seek_cb = info->v_seek_cb;
 	c->v_preload_cb = info->v_preload_cb;
+	c->request_preload = info->request_preload;
 	c->speed = info->speed;
 	c->media_duration = m->fmt->duration;
 
@@ -632,6 +658,16 @@ void mp_cache_stop(mp_cache_t *c)
 	pthread_mutex_unlock(&c->mutex);
 
 	os_sem_post(c->sem);
+}
+
+void mp_cache_preload_frame(mp_cache_t *c)
+{
+	if (c->request_preload && c->thread_valid && c->v_preload_cb) {
+		pthread_mutex_lock(&c->mutex);
+		c->preload_frame = true;
+		pthread_mutex_unlock(&c->mutex);
+		os_sem_post(c->sem);
+	}
 }
 
 int64_t mp_cache_get_current_time(mp_cache_t *c)
