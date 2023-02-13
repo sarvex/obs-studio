@@ -285,7 +285,7 @@ static void get_audio(void *opaque, struct obs_source_audio *a)
 static void media_stopped(void *opaque)
 {
 	struct ffmpeg_source *s = opaque;
-	if (s->is_clear_on_media_end) {
+	if (s->is_clear_on_media_end && !s->is_stinger) {
 		obs_source_output_video(s->source, NULL);
 	}
 
@@ -511,6 +511,8 @@ static void restart_proc(void *data, calldata_t *cd)
 static void preload_first_frame_proc(void *data, calldata_t *cd)
 {
 	struct ffmpeg_source *s = data;
+	if (s->is_stinger)
+		obs_source_output_video(s->source, NULL);
 	media_playback_preload_frame(s->media);
 	UNUSED_PARAMETER(cd);
 }

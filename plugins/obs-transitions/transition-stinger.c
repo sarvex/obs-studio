@@ -76,7 +76,6 @@ static void stinger_update(void *data, obs_data_t *settings)
 	obs_data_set_bool(media_settings, "hw_decode", hw_decode);
 	obs_data_set_bool(media_settings, "looping", false);
 	obs_data_set_bool(media_settings, "full_decode", preload);
-	obs_data_set_bool(media_settings, "clear_on_media_end", false);
 	obs_data_set_bool(media_settings, "is_stinger", true);
 
 	obs_source_release(s->media_source);
