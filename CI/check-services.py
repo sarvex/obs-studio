@@ -169,18 +169,21 @@ def get_last_artifact():
 
 def find_people_to_blame(raw_services: str, servers: list[tuple[str, str]]) -> dict:
     if not servers:
-        return dict()
+        return {}
 
     # Fetch Blame data from github
     s = requests.session()
     s.headers['Authorization'] = f'Bearer {os.environ["GITHUB_TOKEN"]}'
 
-    r = s.post('https://api.github.com/graphql', json=dict(query=GQL_QUERY, variables=dict()))
+    r = s.post(
+        'https://api.github.com/graphql',
+        json=dict(query=GQL_QUERY, variables={}),
+    )
     r.raise_for_status()
     j = r.json()
 
     # The file is only ~2600 lines so this isn't too crazy and makes the lookup very easy
-    line_author = dict()
+    line_author = {}
     for blame in j['data']['repositoryOwner']['repository']['object']['blame']['ranges']:
         for i in range(blame['startingLine'] - 1, blame['endingLine']):
             if user := blame['commit']['author']['user']:
@@ -232,15 +235,15 @@ def main():
             fail_timestamps = get_last_artifact()
         except Exception as e:
             print(f'⚠️ Could not fetch cache file, starting fresh. (Exception: {e})')
-            fail_timestamps = dict()
+            fail_timestamps = {}
         else:
             print('Fetched cache file from last run artifact.')
     else:
         print('Successfully loaded cache file:', CACHE_FILE)
 
     start_time = int(time.time())
-    affected_services = dict()
-    removed_servers = list()
+    affected_services = {}
+    removed_servers = []
 
     # create temporary new list
     new_services = services.copy()
@@ -283,7 +286,7 @@ def main():
                         continue
                 else:
                     fail_timestamps[server['url']] = start_time
-            elif is_ok and server['url'] in fail_timestamps:
+            elif server['url'] in fail_timestamps:
                 # remove timestamp of failed check if server is back
                 delta = start_time - fail_timestamps[server['url']]
                 print(f'💡 Server "{server["url"]}" is back after {round(delta/60/60/24)} days!')
@@ -298,7 +301,7 @@ def main():
         # remove services with no valid servers
         if not new_service['servers']:
             print(f'💀 Service "{service["name"]}" has no valid servers left, removing!')
-            affected_services[service['name']] = f'Service removed'
+            affected_services[service['name']] = 'Service removed'
             continue
 
         new_services['services'].append(new_service)
@@ -338,7 +341,7 @@ def main():
             service_authors = find_people_to_blame(raw_services, removed_servers)
         except Exception as e:
             print(f'⚠ Could not fetch blame for some reason: {e}')
-            service_authors = dict()
+            service_authors = {}
 
         # set GitHub outputs
         set_output('make_pr', 'true')
